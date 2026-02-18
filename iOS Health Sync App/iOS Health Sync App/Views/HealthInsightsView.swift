@@ -93,7 +93,7 @@ struct HealthInsightsView: View {
     private var activityOverview: some View {
         let activityInsights = insights.filter { $0.category == .activity }
         
-        if let stepsInsight = activityInsights.first(where: { $0.type == .steps }) {
+        if let stepsInsight = activityInsights.first(where: { $0.type == "steps" }) {
             LabeledContent("平均步数") {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(Int(stepsInsight.averageValue))")
@@ -110,14 +110,14 @@ struct HealthInsightsView: View {
                 .tint(stepsInsight.averageValue >= 10000 ? .green : .blue)
         }
         
-        if let caloriesInsight = activityInsights.first(where: { $0.type == .activeEnergy }) {
+        if let caloriesInsight = activityInsights.first(where: { $0.type == "activeEnergyBurned" }) {
             LabeledContent("活动能量") {
                 Text("\(Int(caloriesInsight.averageValue)) 千卡")
                     .font(.headline)
             }
         }
         
-        if let distanceInsight = activityInsights.first(where: { $0.type == .distance }) {
+        if let distanceInsight = activityInsights.first(where: { $0.type == "distanceWalkingRunning" }) {
             LabeledContent("总距离") {
                 Text(String(format: "%.1f 公里", distanceInsight.totalValue / 1000))
                     .font(.headline)
@@ -131,7 +131,7 @@ struct HealthInsightsView: View {
     private var heartHealthOverview: some View {
         let heartInsights = insights.filter { $0.category == .heart }
         
-        if let heartRateInsight = heartInsights.first(where: { $0.type == .heartRate }) {
+        if let heartRateInsight = heartInsights.first(where: { $0.type == "heartRate" }) {
             LabeledContent("平均心率") {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(Int(heartRateInsight.averageValue)) bpm")
@@ -143,21 +143,21 @@ struct HealthInsightsView: View {
             }
         }
         
-        if let restingHRInsight = heartInsights.first(where: { $0.type == .restingHeartRate }) {
+        if let restingHRInsight = heartInsights.first(where: { $0.type == "restingHeartRate" }) {
             LabeledContent("静息心率") {
                 Text("\(Int(restingHRInsight.averageValue)) bpm")
                     .font(.headline)
             }
         }
         
-        if let hrvInsight = heartInsights.first(where: { $0.type == .heartRateVariability }) {
+        if let hrvInsight = heartInsights.first(where: { $0.type == "heartRateVariability" }) {
             LabeledContent("心率变异性") {
                 Text(String(format: "%.1f ms", hrvInsight.averageValue))
                     .font(.headline)
             }
         }
         
-        if let bloodOxygenInsight = heartInsights.first(where: { $0.type == .bloodOxygen }) {
+        if let bloodOxygenInsight = heartInsights.first(where: { $0.type == "bloodOxygen" }) {
             LabeledContent("血氧饱和度") {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(String(format: "%.1f%%", bloodOxygenInsight.averageValue))
@@ -178,7 +178,7 @@ struct HealthInsightsView: View {
     private var sleepOverview: some View {
         let sleepInsights = insights.filter { $0.category == .sleep }
         
-        if let sleepInsight = sleepInsights.first(where: { $0.type == .sleep }) {
+        if let sleepInsight = sleepInsights.first(where: { $0.type == "sleepAnalysis" }) {
             let hours = sleepInsight.averageValue / 3600
             LabeledContent("平均睡眠") {
                 VStack(alignment: .trailing, spacing: 2) {
@@ -206,7 +206,7 @@ struct HealthInsightsView: View {
     
     @ViewBuilder
     private var trendCharts: some View {
-        if let stepsInsight = insights.first(where: { $0.type == .steps }) {
+        if let stepsInsight = insights.first(where: { $0.type == "steps" }) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("步数趋势")
                     .font(.subheadline)
@@ -232,7 +232,7 @@ struct HealthInsightsView: View {
             }
         }
         
-        if let heartRateInsight = insights.first(where: { $0.type == .heartRate }) {
+        if let heartRateInsight = insights.first(where: { $0.type == "heartRate" }) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("心率趋势")
                     .font(.subheadline)
@@ -327,7 +327,7 @@ struct HealthInsightsView: View {
         }
         
         return HealthInsight(
-            type: type,
+            type: type.rawValue,
             category: category,
             averageValue: average,
             totalValue: total,
@@ -341,7 +341,7 @@ struct HealthInsightsView: View {
         var recommendations: [String] = []
         
         // 基于步数的建议
-        if let stepsInsight = insights.first(where: { $0.type == .steps }) {
+        if let stepsInsight = insights.first(where: { $0.type == "steps" }) {
             if stepsInsight.averageValue < 5000 {
                 recommendations.append("您的日均步数较低，建议每天至少步行 10,000 步以保持健康。")
             } else if stepsInsight.averageValue >= 10000 {
@@ -350,14 +350,14 @@ struct HealthInsightsView: View {
         }
         
         // 基于心率的建议
-        if let heartRateInsight = insights.first(where: { $0.type == .heartRate }) {
+        if let heartRateInsight = insights.first(where: { $0.type == "heartRate" }) {
             if heartRateInsight.averageValue > 100 {
                 recommendations.append("您的静息心率偏高，建议增加有氧运动并保持充足睡眠。")
             }
         }
         
         // 基于睡眠的建议
-        if let sleepInsight = insights.first(where: { $0.type == .sleep }) {
+        if let sleepInsight = insights.first(where: { $0.type == "sleepAnalysis" }) {
             let hours = sleepInsight.averageValue / 3600
             if hours < 7 {
                 recommendations.append("您的睡眠时间不足，成年人建议每天睡眠 7-9 小时。")
@@ -365,7 +365,7 @@ struct HealthInsightsView: View {
         }
         
         // 基于血氧的建议
-        if let bloodOxygenInsight = insights.first(where: { $0.type == .bloodOxygen }) {
+        if let bloodOxygenInsight = insights.first(where: { $0.type == "bloodOxygen" }) {
             if bloodOxygenInsight.averageValue < 95 {
                 recommendations.append("您的血氧饱和度偏低，建议咨询医生。")
             }
@@ -382,7 +382,7 @@ struct HealthInsightsView: View {
 // MARK: - 数据模型
 
 struct HealthInsight {
-    let type: HealthDataType
+    let type: String
     let category: Category
     let averageValue: Double
     let totalValue: Double
