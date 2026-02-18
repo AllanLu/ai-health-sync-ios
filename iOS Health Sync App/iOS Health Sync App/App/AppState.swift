@@ -10,23 +10,28 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+/// 服务器连接信息（用于显示给用户）
+struct ServerInfo: Codable {
+    let host: String
+    let port: Int
+    let fingerprint: String
+}
+
 @MainActor
 @Observable
 final class AppState {
     private let modelContainer: ModelContainer
     private let healthService = HealthKitService()
     private let auditService: AuditService
-    private let pairingService: PairingService
     private let networkServer: NetworkServer
     private let backgroundTaskManager: BackgroundTaskManaging
     private let backgroundTaskController: BackgroundTaskController
     private var notificationTask: Task<Void, Never>?
 
     var syncConfiguration: SyncConfiguration
-    var pairingQRCode: PairingQRCode?
+    var serverInfo: ServerInfo?
     var isServerRunning: Bool = false
     var isServerStarting: Bool = false
-    var isRefreshing: Bool = false
     var serverPort: Int = 0
     var serverFingerprint: String = ""
     var lastError: String?
@@ -36,12 +41,10 @@ final class AppState {
     init(modelContainer: ModelContainer, backgroundTaskManager: BackgroundTaskManaging = UIApplication.shared) {
         self.modelContainer = modelContainer
         self.auditService = AuditService(modelContainer: modelContainer)
-        self.pairingService = PairingService(modelContainer: modelContainer)
         self.backgroundTaskManager = backgroundTaskManager
         self.backgroundTaskController = BackgroundTaskController(manager: backgroundTaskManager)
         self.networkServer = NetworkServer(
             healthService: healthService,
-            pairingService: pairingService,
             auditService: auditService,
             modelContainer: modelContainer,
             protectedDataAvailable: {
@@ -205,9 +208,8 @@ final class AppState {
             }.value
             AppLoggers.app.info("解析主机IP: \(host, privacy: .public)")
 
-            let qr = await pairingService.generateQRCode(host: host, port: serverPort, fingerprint: serverFingerprint)
-            AppLoggers.app.info("生成二维码: \(qr.code, privacy: .public)")
-            pairingQRCode = qr
+            // 保存服务器信息（公开访问，无需配对）
+            serverInfo = ServerInfo(host: host, port: serverPort, fingerprint: serverFingerprint)
 
             await auditService.record(eventType: "api.server_start", details: ["port": String(serverPort)])
             // Prevent auto-lock while actively sharing.
@@ -223,26 +225,10 @@ final class AppState {
         await networkServer.stop()
         isServerRunning = false
         serverPort = 0
-        pairingQRCode = nil
+        serverInfo = nil
         await auditService.record(eventType: "api.server_stop", details: [:])
         backgroundTaskController.endIfNeeded()
         UIApplication.shared.isIdleTimerDisabled = false
-    }
-
-    func refreshPairingCode() async {
-        guard isServerRunning else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
-
-        let host = await Task.detached(priority: .utility) {
-            Self.localIPAddress() ?? "127.0.0.1"
-        }.value
-        pairingQRCode = await pairingService.generateQRCode(host: host, port: serverPort, fingerprint: serverFingerprint)
-    }
-
-    func revokeAllPairings() async {
-        await pairingService.revokeAll()
-        await auditService.record(eventType: "auth.revoke", details: [:])
     }
 
     func handleScenePhaseChange(_ newPhase: ScenePhase) {

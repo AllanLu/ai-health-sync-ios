@@ -32,10 +32,10 @@ enum CLIError: Error {
 // MARK: - Version Information
 
 /// CLI version following semantic versioning (SemVer)
-let cliVersion = "1.0.0"
+let cliVersion = "1.1.0"
 
 /// Build metadata
-let cliBuildDate = "2026-01-07"
+let cliBuildDate = "2026-02-18"
 
 @main
 struct HealthSyncCLI {
@@ -176,7 +176,6 @@ struct HealthSyncCLI {
 
     static func scan(args: [String]) async throws {
         let options = try parseOptions(args)
-        let name = options["--name"] ?? Host.current().localizedName ?? "macOS"
         let debugPasteboard = options["--debug-pasteboard"] == "true"
 
         // Strategy: Text-first for reliable Universal Clipboard sync.
@@ -205,7 +204,7 @@ struct HealthSyncCLI {
             // Text-first: Check for JSON pairing payload in clipboard
             // This is the most reliable method via Universal Clipboard
             qrPayload = textPayload
-            print("在剪贴板中找到配对载荷（文本）")
+            print("在剪贴板中找到服务器信息（文本）")
         } else {
             // Fall back to image scanning (for screenshots)
             let nsImage: NSImage? = await MainActor.run {
@@ -232,7 +231,7 @@ struct HealthSyncCLI {
             guard let nsImage,
                   let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
                 throw CLIError.invalidArguments("""
-                    剪贴板中没有配对数据。
+                    剪贴板中没有服务器数据。
 
                     请尝试以下方法:
                     1. 从 iOS 应用复制（点击复制按钮）- 通过通用剪贴板同步
@@ -252,7 +251,7 @@ struct HealthSyncCLI {
         do {
             payload = try decoder.decode(PairingPayload.self, from: Data(qrPayload.utf8))
         } catch {
-            throw CLIError.invalidArguments("二维码格式无效。期望健康同步配对码。")
+            throw CLIError.invalidArguments("二维码格式无效。期望健康同步服务器信息。")
         }
 
         // Validate QR code version for forward compatibility
@@ -265,16 +264,23 @@ struct HealthSyncCLI {
             throw CLIError.invalidArguments("主机必须在本地网络上（收到: \(payload.host)）")
         }
 
-        print("正在与 \(payload.host):\(payload.port) 配对...")
+        print("正在连接到 \(payload.host):\(payload.port)...")
 
-        // Perform pairing
-        let pairRequest = PairRequest(code: payload.code, clientName: name)
-        let client = HealthSyncClient(host: payload.host, port: payload.port, token: "", fingerprint: payload.certificateFingerprint)
-        let response: PairResponse = try await client.send(path: "/api/v1/pair", method: "POST", body: pairRequest, authorized: false)
+        // 测试连接（公开访问模式，无需配对）
+        let client = HealthSyncClient(host: payload.host, port: payload.port, token: nil, fingerprint: payload.certificateFingerprint)
+        do {
+            let response: StatusResponse = try await client.send(path: "/api/v1/status", method: "GET", body: EmptyBody())
+            print("✓ 连接成功!")
+            print("  设备: \(response.deviceName)")
+            print("  状态: \(response.status)")
+        } catch {
+            throw CLIError.requestFailed("连接失败: \(error.localizedDescription)")
+        }
 
+        // 保存配置（公开访问模式，无需 token）
         let config = ClientConfig(host: payload.host, port: payload.port, fingerprint: payload.certificateFingerprint)
-        try ConfigStore.save(config, token: response.token)
-        print("✓ 配对成功!")
+        try ConfigStore.save(config)
+        print("\n配置已保存到 ~/.healthsync/config.json")
         print("\n现在可以运行:")
         print("  healthsync status")
         // Generate dynamic date range example using current date
@@ -388,13 +394,11 @@ struct HealthSyncCLI {
 
     static func pair(args: [String]) async throws {
         let options = try parseOptions(args)
-        let name = options["--name"] ?? Host.current().localizedName ?? "macOS"
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
         let host: String
         let port: Int
-        let code: String
         let fingerprint: String
 
         if let qr = options["--qr"] {
@@ -412,14 +416,12 @@ struct HealthSyncCLI {
 
             host = payload.host
             port = payload.port
-            code = payload.code
             fingerprint = payload.certificateFingerprint
         } else {
             guard let hostValue = options["--host"],
                   let portValue = options["--port"],
-                  let codeValue = options["--code"],
                   let fingerprintValue = options["--fingerprint"] else {
-                throw CLIError.invalidArguments("缺少配对参数")
+                throw CLIError.invalidArguments("缺少连接参数。需要 --host, --port, --fingerprint（公开访问模式，无需配对码）")
             }
 
             // Validate host is local network to prevent SSRF attacks
@@ -434,17 +436,24 @@ struct HealthSyncCLI {
 
             host = hostValue
             port = portNum
-            code = codeValue
             fingerprint = fingerprintValue
         }
 
-        let pairRequest = PairRequest(code: code, clientName: name)
-        let client = HealthSyncClient(host: host, port: port, token: "", fingerprint: fingerprint)
-        let response: PairResponse = try await client.send(path: "/api/v1/pair", method: "POST", body: pairRequest, authorized: false)
+        // 测试连接（公开访问模式）
+        print("正在连接到 \(host):\(port)...")
+        let client = HealthSyncClient(host: host, port: port, token: nil, fingerprint: fingerprint)
+        do {
+            let response: StatusResponse = try await client.send(path: "/api/v1/status", method: "GET", body: EmptyBody())
+            print("✓ 连接成功!")
+            print("  设备: \(response.deviceName)")
+            print("  状态: \(response.status)")
+        } catch {
+            throw CLIError.requestFailed("连接失败: \(error.localizedDescription)")
+        }
 
         let config = ClientConfig(host: host, port: port, fingerprint: fingerprint)
-        try ConfigStore.save(config, token: response.token)
-        print("配对成功！令牌已存储到钥匙串。")
+        try ConfigStore.save(config)
+        print("配置已保存到 ~/.healthsync/config.json")
     }
 
     static func status(args: [String]) async throws {
@@ -453,9 +462,9 @@ struct HealthSyncCLI {
             print("试运行: 将调用 /api/v1/status")
             return
         }
-        let (config, token) = try ConfigStore.load()
-        let client = HealthSyncClient(host: config.host, port: config.port, token: token, fingerprint: config.fingerprint)
-        let response: StatusResponse = try await client.send(path: "/api/v1/status", method: "GET", body: EmptyBody(), authorized: true)
+        let config = try ConfigStore.load()
+        let client = HealthSyncClient(host: config.host, port: config.port, token: nil, fingerprint: config.fingerprint)
+        let response: StatusResponse = try await client.send(path: "/api/v1/status", method: "GET", body: EmptyBody())
 
         // Format status with emoji indicator
         let statusIcon: String
@@ -463,7 +472,7 @@ struct HealthSyncCLI {
         switch response.status.lowercased() {
         case "ok", "ready", "running":
             statusIcon = "✅"
-            statusText = "已配对"
+            statusText = "已连接"
         case "error", "failed":
             statusIcon = "❌"
             statusText = "错误"
@@ -495,9 +504,9 @@ struct HealthSyncCLI {
             print("试运行: 将调用 /api/v1/health/types")
             return
         }
-        let (config, token) = try ConfigStore.load()
-        let client = HealthSyncClient(host: config.host, port: config.port, token: token, fingerprint: config.fingerprint)
-        let response: TypesResponse = try await client.send(path: "/api/v1/health/types", method: "GET", body: EmptyBody(), authorized: true)
+        let config = try ConfigStore.load()
+        let client = HealthSyncClient(host: config.host, port: config.port, token: nil, fingerprint: config.fingerprint)
+        let response: TypesResponse = try await client.send(path: "/api/v1/health/types", method: "GET", body: EmptyBody())
         print(response.enabledTypes.map { $0.rawValue }.joined(separator: ", "))
     }
 
@@ -538,10 +547,10 @@ struct HealthSyncCLI {
         let types = typesString.split(separator: ",").compactMap { HealthDataType(rawValue: String($0)) }
         if types.isEmpty { throw CLIError.invalidArguments("没有有效的类型") }
 
-        let (config, token) = try ConfigStore.load()
-        let client = HealthSyncClient(host: config.host, port: config.port, token: token, fingerprint: config.fingerprint)
+        let config = try ConfigStore.load()
+        let client = HealthSyncClient(host: config.host, port: config.port, token: nil, fingerprint: config.fingerprint)
         let request = HealthDataRequest(startDate: startDate, endDate: endDate, types: types)
-        let response: HealthDataResponse = try await client.send(path: "/api/v1/health/data", method: "POST", body: request, authorized: true)
+        let response: HealthDataResponse = try await client.send(path: "/api/v1/health/data", method: "POST", body: request)
 
         switch outputFormat {
         case .json:
@@ -652,16 +661,16 @@ struct HealthSyncCLI {
             throw CLIError.invalidArguments("日期格式无效")
         }
         
-        let (config, token) = try ConfigStore.load()
-        let client = HealthSyncClient(host: config.host, port: config.port, token: token, fingerprint: config.fingerprint)
+        let config = try ConfigStore.load()
+        let client = HealthSyncClient(host: config.host, port: config.port, token: nil, fingerprint: config.fingerprint)
         
         // 获取所有启用的数据类型
-        let typesResponse: TypesResponse = try await client.send(path: "/api/v1/health/types", method: "GET", body: EmptyBody(), authorized: true)
+        let typesResponse: TypesResponse = try await client.send(path: "/api/v1/health/types", method: "GET", body: EmptyBody())
         let types = typesResponse.enabledTypes
         
         // 获取数据
         let request = HealthDataRequest(startDate: startDate, endDate: endDate, types: types)
-        let response: HealthDataResponse = try await client.send(path: "/api/v1/health/data", method: "POST", body: request, authorized: true)
+        let response: HealthDataResponse = try await client.send(path: "/api/v1/health/data", method: "POST", body: request)
         
         // 解析报告格式
         let formatString = options["--format"]?.lowercased() ?? "text"
@@ -858,7 +867,7 @@ struct ConfigStore {
         return dir.appendingPathComponent("config.json")
     }
 
-    static func save(_ config: ClientConfig, token: String) throws {
+    static func save(_ config: ClientConfig) throws {
         // Save non-sensitive config to file
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted]
@@ -867,11 +876,10 @@ struct ConfigStore {
         let url = try configURL()
         try data.write(to: url, options: [.atomic])
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        // Save token to Keychain
-        try KeychainStore.saveToken(token, for: config.host)
+        // 公开访问模式 - 不需要保存 token
     }
 
-    static func load() throws -> (config: ClientConfig, token: String) {
+    static func load() throws -> ClientConfig {
         let url = try configURL()
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw CLIError.missingConfig
@@ -879,9 +887,7 @@ struct ConfigStore {
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let config = try decoder.decode(ClientConfig.self, from: data)
-        let token = try KeychainStore.loadToken(for: config.host)
-        return (config, token)
+        return try decoder.decode(ClientConfig.self, from: data)
     }
 }
 
@@ -952,10 +958,10 @@ enum KeychainStore {
 struct HealthSyncClient {
     let host: String
     let port: Int
-    let token: String
+    let token: String?
     let fingerprint: String
 
-    func send<Response: Decodable, Body: Encodable>(path: String, method: String, body: Body, authorized: Bool) async throws -> Response {
+    func send<Response: Decodable, Body: Encodable>(path: String, method: String, body: Body, authorized: Bool = false) async throws -> Response {
         guard let url = URL(string: "https://\(host):\(port)\(path)") else {
             throw CLIError.invalidArguments("Invalid host or path format")
         }
@@ -967,9 +973,7 @@ struct HealthSyncClient {
             request.httpBody = try encoder.encode(body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        if authorized {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        // 公开访问模式 - 不需要 Authorization header
 
         let delegate = PinnedSessionDelegate(expectedFingerprint: fingerprint)
         let sessionConfig: URLSessionConfiguration = {

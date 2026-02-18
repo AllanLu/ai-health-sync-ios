@@ -10,7 +10,6 @@ import SwiftData
 
 actor NetworkServer {
     private let healthService: HealthDataProviding
-    private let pairingService: PairingService
     private let auditService: AuditService
     private let modelContainer: ModelContainer
     private let protectedDataAvailable: @Sendable () async -> Bool
@@ -20,9 +19,6 @@ actor NetworkServer {
     private var listener: NWListener?
     private(set) var port: Int = 0
     private(set) var certificateFingerprint: String = ""
-    private var requestLog: [String: [Date]] = [:]
-    private let rateLimit = 60
-    private let rateWindow: TimeInterval = 60
     private let maxHeadersBytes = 16_384
     private let maxBodyBytes = 1_048_576
     private let maxRequestDuration: TimeInterval = 10
@@ -33,7 +29,6 @@ actor NetworkServer {
 
     init(
         healthService: HealthDataProviding,
-        pairingService: PairingService,
         auditService: AuditService,
         modelContainer: ModelContainer,
         protectedDataAvailable: @escaping @Sendable () async -> Bool,
@@ -42,7 +37,6 @@ actor NetworkServer {
         listenerPort: NWEndpoint.Port? = nil
     ) {
         self.healthService = healthService
-        self.pairingService = pairingService
         self.auditService = auditService
         self.modelContainer = modelContainer
         self.protectedDataAvailable = protectedDataAvailable
@@ -127,25 +121,7 @@ actor NetworkServer {
         let method = request.method
         let requestId = UUID().uuidString
 
-        if path == "/api/v1/pair" && method == "POST" {
-            return await handlePair(request, requestId: requestId)
-        }
-
-        guard let token = bearerToken(from: request.headers), await pairingService.validateToken(token) else {
-            await auditService.record(eventType: "security.unauthorized_access", details: [
-                "path": path,
-                "requestId": requestId
-            ])
-            return HTTPResponse.plain(statusCode: 401, reason: "Unauthorized", message: "Missing or invalid token")
-        }
-        if isRateLimited(token: token) {
-            await auditService.record(eventType: "security.rate_limit_exceeded", details: [
-                "path": path,
-                "requestId": requestId
-            ])
-            return HTTPResponse.plain(statusCode: 429, reason: "Too Many Requests", message: "Rate limit exceeded")
-        }
-
+        // 公开访问模式 - 不需要配对验证
         switch (method, path) {
         case ("GET", "/api/v1/status"):
             return await handleStatus(requestId: requestId)
@@ -155,41 +131,6 @@ actor NetworkServer {
             return await handleHealthData(request, requestId: requestId)
         default:
             return HTTPResponse.plain(statusCode: 404, reason: "Not Found", message: "Unknown route")
-        }
-    }
-
-    private func handlePair(_ request: HTTPRequest, requestId: String) async -> HTTPResponse {
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let payload = try decoder.decode(PairRequest.self, from: request.body)
-            let response = try await pairingService.handlePairRequest(payload)
-            let clientHash = Self.hashString(payload.clientName)
-            await auditService.record(eventType: "auth.pair", details: [
-                "clientHash": clientHash,
-                "requestId": requestId
-            ])
-            return HTTPResponse.json(statusCode: 200, body: response)
-        } catch let pairingError as PairingError {
-            // Return specific error message to help CLI users debug
-            await auditService.record(eventType: "security.unauthorized_access", details: [
-                "path": "/api/v1/pair",
-                "error": String(describing: pairingError),
-                "requestId": requestId
-            ])
-            return HTTPResponse.plain(
-                statusCode: 400,
-                reason: "Bad Request",
-                message: pairingError.localizedDescription
-            )
-        } catch {
-            // Unexpected error (e.g., JSON decode failure)
-            await auditService.record(eventType: "security.unauthorized_access", details: [
-                "path": "/api/v1/pair",
-                "error": "decode_error",
-                "requestId": requestId
-            ])
-            return HTTPResponse.plain(statusCode: 400, reason: "Bad Request", message: "Invalid request format")
         }
     }
 
@@ -325,25 +266,6 @@ actor NetworkServer {
                 AppLoggers.network.error("Failed to update last export: \(error.localizedDescription, privacy: .public)")
             }
         }
-    }
-
-    private func bearerToken(from headers: [String: String]) -> String? {
-        guard let value = headers["Authorization"] else { return nil }
-        let parts = value.split(separator: " ")
-        guard parts.count == 2, parts[0].lowercased() == "bearer" else { return nil }
-        return String(parts[1])
-    }
-
-    private func isRateLimited(token: String) -> Bool {
-        let now = Date()
-        var entries = requestLog[token, default: []].filter { now.timeIntervalSince($0) < rateWindow }
-        if entries.count >= rateLimit {
-            requestLog[token] = entries
-            return true
-        }
-        entries.append(now)
-        requestLog[token] = entries
-        return false
     }
 
     private func receiveRequest(on connection: NWConnection) async throws -> HTTPRequest {
