@@ -1,3 +1,9 @@
+
+# Local build server config
+buildServer.json
+
+# Claude local notes
+Claude.md
 # Swift Package Manager
 .build/
 .swiftpm/
@@ -93,3 +99,4 @@ dist/
 
 # Homebrew tap (separate repo)
 homebrew-tap/
+/.vscode
