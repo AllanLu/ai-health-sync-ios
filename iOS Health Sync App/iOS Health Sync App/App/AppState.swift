@@ -38,10 +38,10 @@ final class AppState {
     var protectedDataAvailable: Bool = true
     var healthAuthorizationStatus: Bool = false
 
-    init(modelContainer: ModelContainer, backgroundTaskManager: BackgroundTaskManaging = UIApplication.shared) {
+    init(modelContainer: ModelContainer, backgroundTaskManager: BackgroundTaskManaging? = nil) {
         self.modelContainer = modelContainer
         self.auditService = AuditService(modelContainer: modelContainer)
-        self.backgroundTaskManager = backgroundTaskManager
+        self.backgroundTaskManager = backgroundTaskManager ?? UIApplication.shared
         self.backgroundTaskController = BackgroundTaskController(manager: backgroundTaskManager)
         self.networkServer = NetworkServer(
             healthService: healthService,

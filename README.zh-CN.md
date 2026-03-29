@@ -1,6 +1,21 @@
-# HealthSync iOS
+# HealthSync iOS (Fork)
 
-HealthSync 是一个 iOS 本地健康数据共享应用。当前版本通过本地网络提供 HTTPS API，使用 `curl` 拉取健康数据。
+> 本项目基于 [espoir1989/ai-health-sync-ios](https://github.com/espoir1989/ai-health-sync-ios) 二次开发。完整的操作指南、API 文档和 Skills 用法请前往原作者的仓库查看。
+
+HealthSync 是一个 iOS 本地健康数据共享应用，通过本地网络提供 HTTPS API，使用 `curl` 拉取健康数据。
+
+## 本 Fork 的修改
+
+### OLED 熄屏省电模式
+
+本项目针对 **OLED iPhone 备用机** 场景进行了优化：
+
+- **禁止自动锁屏**：服务器运行期间设备不会自动锁屏，始终保持可同步状态
+- **熄屏省电**：点击「熄屏省电」按钮后，屏幕显示纯黑画面（OLED 像素完全关闭），同时隐藏状态栏和 Home 横条，屏幕亮度降至最低，最大限度节省电量
+- **一键恢复**：点击屏幕任意位置即可恢复正常界面
+- **后台不中断**：熄屏期间服务器持续运行，健康数据同步不受影响
+
+适用场景：将一台旧 iPhone 作为 HealthKit 数据服务器 24 小时运行，搭配充电使用，无需反复解锁。
 
 ## 当前能力（代码对齐）
 

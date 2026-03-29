@@ -100,3 +100,5 @@ dist/
 # Homebrew tap (separate repo)
 homebrew-tap/
 /.vscode
+/iOS Health Sync App/iOS Health Sync App.xcodeproj/xcshareddata
+ProjectPlan.md

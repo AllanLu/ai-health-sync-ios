@@ -13,6 +13,8 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \AuditEventRecord.timestamp, order: .reverse) private var auditEvents: [AuditEventRecord]
+    @State private var isScreenBlackout = false
+    @State private var savedBrightness: CGFloat = 0.5
 
     var body: some View {
         NavigationStack {
@@ -36,6 +38,24 @@ struct ContentView: View {
                 Text(appState.lastError ?? "")
             }
         }
+        .overlay {
+            if isScreenBlackout {
+                Color.black
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        isScreenBlackout = false
+                        if let screen = UIApplication.shared.connectedScenes
+                            .compactMap({ $0 as? UIWindowScene })
+                            .first?.screen {
+                            screen.brightness = savedBrightness
+                        }
+                    }
+                    .transition(.opacity)
+            }
+        }
+        .statusBarHidden(isScreenBlackout)
+        .persistentSystemOverlays(isScreenBlackout ? .hidden : .automatic)
+        .animation(.easeInOut(duration: 0.3), value: isScreenBlackout)
     }
 
     /// 应用版本号
@@ -98,6 +118,23 @@ struct ContentView: View {
                 }
                 .liquidGlassButtonStyle(.standard)
                 .tint(.red)
+
+                Button {
+                    HapticFeedback.impact(.light)
+                    if let screen = UIApplication.shared.connectedScenes
+                        .compactMap({ $0 as? UIWindowScene })
+                        .first?.screen {
+                        savedBrightness = screen.brightness
+                        screen.brightness = 0.0
+                    }
+                    isScreenBlackout = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "moon.fill")
+                        Text("熄屏省电")
+                    }
+                }
+                .liquidGlassButtonStyle(.standard)
             } else {
                 Button {
                     HapticFeedback.impact(.medium)

@@ -15,7 +15,8 @@ extension UIApplication: BackgroundTaskManaging {}
 
 @MainActor
 final class BackgroundTaskController {
-    private let manager: BackgroundTaskManaging
+    private var manager: BackgroundTaskManaging?
+    private let managerProvider: () -> BackgroundTaskManaging
     private var onExpiration: @MainActor () -> Void
     private var taskIdentifier: UIBackgroundTaskIdentifier = .invalid
     private var shouldKeepRunning: Bool = false
@@ -23,9 +24,17 @@ final class BackgroundTaskController {
     /// 静音音频播放器，用于保持应用在后台运行
     private var silentAudioPlayer: AVAudioPlayer?
 
-    init(manager: BackgroundTaskManaging, onExpiration: @escaping @MainActor () -> Void = {}) {
+    init(manager: BackgroundTaskManaging? = nil, onExpiration: @escaping @MainActor () -> Void = {}) {
         self.manager = manager
+        self.managerProvider = { UIApplication.shared }
         self.onExpiration = onExpiration
+    }
+
+    private func resolvedManager() -> BackgroundTaskManaging {
+        if let manager { return manager }
+        let resolved = managerProvider()
+        self.manager = resolved
+        return resolved
     }
 
     func setOnExpiration(_ handler: @escaping @MainActor () -> Void) {
@@ -54,7 +63,8 @@ final class BackgroundTaskController {
         let handler: @MainActor @Sendable () -> Void = { [weak self] in
             self?.handleExpiration()
         }
-        let identifier = manager.beginBackgroundTask(withName: "HealthSync Sharing", expirationHandler: handler)
+        let mgr = resolvedManager()
+        let identifier = mgr.beginBackgroundTask(withName: "HealthSync Sharing", expirationHandler: handler)
         guard identifier != .invalid else {
             return false
         }
@@ -69,14 +79,14 @@ final class BackgroundTaskController {
         stopSilentAudio()
         
         guard taskIdentifier != .invalid else { return }
-        manager.endBackgroundTask(taskIdentifier)
+        resolvedManager().endBackgroundTask(taskIdentifier)
         taskIdentifier = .invalid
     }
 
     private func handleExpiration() {
         guard taskIdentifier != .invalid else { return }
         // End the current task
-        manager.endBackgroundTask(taskIdentifier)
+        resolvedManager().endBackgroundTask(taskIdentifier)
         taskIdentifier = .invalid
         
         // If we should keep running, start a new task immediately

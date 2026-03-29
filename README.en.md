@@ -1,6 +1,21 @@
-# HealthSync iOS
+# HealthSync iOS (Fork)
+
+> This project is a fork of [espoir1989/ai-health-sync-ios](https://github.com/espoir1989/ai-health-sync-ios). For the full setup guide, API documentation, and Skills usage, please visit the original repository.
 
 HealthSync is an iOS local health-data sharing app. The current version exposes a local HTTPS API and fetches data via `curl`.
+
+## Changes in This Fork
+
+### OLED Screen Blackout Mode
+
+This fork is optimized for using a **spare OLED iPhone** as an always-on HealthKit server:
+
+- **Prevents auto-lock**: The device stays unlocked while the server is running, keeping it always ready to sync
+- **Screen blackout**: Tap the "Screen Off" button to display a pure black screen (OLED pixels fully off), hide the status bar and home indicator, and reduce brightness to zero for maximum power savings
+- **Tap to restore**: Tap anywhere on the black screen to return to the normal UI
+- **Uninterrupted service**: The server continues running during blackout — health data sync is not affected
+
+Ideal for running an old iPhone as a 24/7 HealthKit data server while plugged in, with no need to repeatedly unlock the device.
 
 ## Current Capabilities (Code-Aligned)
 
